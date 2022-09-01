@@ -1,0 +1,4 @@
+talks to https://github.com/tenpn/tuftyclient with your jenkins builds
+
+pip install api4jenkins
+pip install serial
