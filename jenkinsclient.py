@@ -13,6 +13,22 @@ server = api4jenkins.Jenkins("http://" + secrets["url"], auth=(secrets["user"], 
 ip_replacement = r"\d+\.\d+\.\d+\.\d+"
 build_name_parser = r".*(" + secrets["project_prefix"].upper() + "[\w-]*) \@(\d+).*" # parses "Health Check of PP-trunk-blah-poo @23123 (Build Node Name)"
 
+def find_active_stage_in(wfapi_desc: dict) -> str:
+    """given some jenkins state, finds the active pipeline stage
+
+    Args:
+        wfapi_desc (dict): the result from wfapi/describe on the specific job
+
+    Returns:
+        str: the name of the active stage, or None if can't be found
+    """
+    if "stages" not in wfapi_desc:
+        return None
+    for stage in wfapi_desc["stages"]:
+        if stage["status"] == "IN_PROGRESS":
+            return stage["name"]
+    return None
+
 def get_jenkins_state() -> Dict[str,Any]:
     """generates a dict representing the current state of jenkins. should match tuftyclient's jenkinsdisplay arguments
 
@@ -37,18 +53,23 @@ def get_jenkins_state() -> Dict[str,Any]:
                 # we can't identify this build, do the full name
                 machine_state["build"] = display_name
                 machine_state["changelist"] = -1
+                machine_state["step"] = ""
             else:
                 prefix = "Health: " if "Health" in display_name \
                     else "Deploy: " if "Deploy" in display_name \
                     else ""
                 machine_state["build"] = prefix + build_parts.group(1)
                 machine_state["changelist"] = int(build_parts.group(2))
+                
+                # need to ask again for stage info 
+                stage_desc = build_info.handle_req('GET', 'wfapi/describe').json()
+                active_stage = find_active_stage_in(stage_desc)
+                machine_state["step"] = active_stage if active_stage is not None else ""
             
             start_timestamp = build_info.timestamp/1000 ## from ms to secs
             start_time = datetime.fromtimestamp(start_timestamp)
             machine_state["duration"] = int((datetime.now() - start_time).total_seconds())
-            
-            machine_state["step"] = "todo"
+
         machines.append(machine_state)
     
     return {"machines": machines}
